@@ -1,0 +1,743 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>PillPulse - Mobile Medication Manager</title>
+    <!-- Modern Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Netlify Identity Widget -->
+    <script type="text/javascript" src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* iPhone Safe Area adjustments */
+        .safe-area-top {
+            padding-top: max(1rem, env(safe-area-inset-top));
+        }
+        .safe-area-bottom {
+            padding-bottom: max(1rem, env(safe-area-inset-bottom));
+        }
+        .pb-safe-nav {
+            padding-bottom: calc(5rem + env(safe-area-inset-bottom));
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        .hidden-tab {
+            display: none !important;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans antialiased min-h-screen flex flex-col selection:bg-brand-500 selection:text-white">
+
+    <!-- TOP BAR / HEADER (iPhone Notch & Dynamic Island Aware) -->
+    <header class="bg-white border-b border-slate-200/80 sticky top-0 z-30 safe-area-top shadow-xs">
+        <div class="max-w-xl mx-auto px-4 py-3 flex justify-between items-center">
+            <!-- Brand & Status -->
+            <div class="flex items-center space-x-2.5">
+                <div class="w-9 h-9 rounded-xl bg-brand-600 text-white flex items-center justify-center shadow-md shadow-brand-500/20">
+                    <i class="fa-solid fa-pills text-lg"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-1.5">
+                        <span class="font-bold text-lg tracking-tight text-slate-900">Pill<span class="text-brand-600">Pulse</span></span>
+                        <span id="syncBadge" class="text-[10px] font-bold px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full border border-slate-200">Local</span>
+                    </div>
+                    <p id="currentDateDisplay" class="text-xs text-slate-500 font-medium"></p>
+                </div>
+            </div>
+
+            <!-- Profile / Netlify Identity Action -->
+            <div class="flex items-center gap-2">
+                <button onclick="triggerManualSync()" title="Sync with Cloud" class="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition active:scale-95 text-xs flex items-center gap-1">
+                    <i class="fa-solid fa-cloud-arrow-up text-brand-600"></i>
+                </button>
+                <div data-netlify-identity-button class="text-xs"></div>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN MOBILE CONTAINER -->
+    <main class="max-w-xl w-full mx-auto px-4 pt-4 pb-safe-nav flex-grow">
+
+        <!-- ALERTS AREA -->
+        <div id="alertContainer" class="mb-4 space-y-2"></div>
+
+        <!-- TAB 1: DAILY CHECKLIST (MOBILE FIRST) -->
+        <section id="tabChecklist" class="space-y-4">
+            
+            <!-- Daily Progress Card -->
+            <div class="bg-gradient-to-r from-brand-600 to-brand-700 rounded-2xl p-4 text-white shadow-md flex items-center justify-between">
+                <div>
+                    <span class="text-xs text-brand-100 uppercase tracking-wider font-semibold">Today's Dose Goal</span>
+                    <h2 id="progressPercent" class="text-3xl font-extrabold tracking-tight mt-0.5">0% Completed</h2>
+                    <p id="progressSubtitle" class="text-xs text-brand-100 mt-1">0 of 0 doses taken</p>
+                </div>
+                <div class="w-14 h-14 rounded-full border-4 border-white/20 flex items-center justify-center bg-white/10 backdrop-blur-xs">
+                    <i class="fa-solid fa-notes-medical text-2xl text-white"></i>
+                </div>
+            </div>
+
+            <!-- Empty State -->
+            <div id="emptyState" class="hidden bg-white rounded-2xl p-8 text-center border border-dashed border-slate-300">
+                <div class="w-12 h-12 bg-brand-50 text-brand-600 rounded-full flex items-center justify-center mx-auto mb-3 text-xl">
+                    <i class="fa-solid fa-prescription-bottle-medical"></i>
+                </div>
+                <h3 class="text-base font-bold text-slate-800">No Medications Set</h3>
+                <p class="text-slate-500 text-xs mt-1 mb-4">Tap the '+' button at the bottom to add your first daily prescription.</p>
+                <button onclick="openAddModal()" class="bg-brand-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-sm">Add Medication</button>
+            </div>
+
+            <!-- Mobile Time Period Filter Chips -->
+            <div class="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+                <button onclick="filterPeriod('All')" id="chipAll" class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap bg-slate-900 text-white">All Doses</button>
+                <button onclick="filterPeriod('Morning')" id="chipMorning" class="px-3.5 py-1.5 rounded-xl text-xs font-medium transition whitespace-nowrap bg-white text-slate-600 border border-slate-200">☀️ Morning</button>
+                <button onclick="filterPeriod('Midday')" id="chipMidday" class="px-3.5 py-1.5 rounded-xl text-xs font-medium transition whitespace-nowrap bg-white text-slate-600 border border-slate-200">🌤️ Midday</button>
+                <button onclick="filterPeriod('Evening')" id="chipEvening" class="px-3.5 py-1.5 rounded-xl text-xs font-medium transition whitespace-nowrap bg-white text-slate-600 border border-slate-200">🌆 Evening</button>
+                <button onclick="filterPeriod('Night')" id="chipNight" class="px-3.5 py-1.5 rounded-xl text-xs font-medium transition whitespace-nowrap bg-white text-slate-600 border border-slate-200">🌙 Night</button>
+            </div>
+
+            <!-- Checklist Items Grouped -->
+            <div id="checklistContainer" class="space-y-3"></div>
+        </section>
+
+        <!-- TAB 2: MY MEDICATIONS CABINET -->
+        <section id="tabMedications" class="hidden-tab space-y-3">
+            <div class="flex justify-between items-center px-1 mb-1">
+                <h2 class="text-base font-bold text-slate-900">Medication Directory</h2>
+                <span id="medCountBadge" class="text-xs font-bold text-slate-500 bg-slate-200 px-2 py-0.5 rounded-full">0 meds</span>
+            </div>
+
+            <div id="medicationCardsGrid" class="space-y-3"></div>
+        </section>
+
+        <!-- TAB 3: HISTORY LOG -->
+        <section id="tabHistory" class="hidden-tab space-y-3">
+            <div class="bg-white p-3.5 rounded-2xl border border-slate-200 space-y-3">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-base font-bold text-slate-900">Dose History</h2>
+                    <button onclick="clearHistoryLog()" class="text-xs text-red-600 font-semibold hover:underline">Clear Log</button>
+                </div>
+                <!-- Search & Filter Controls -->
+                <div class="flex gap-2">
+                    <input id="historySearch" oninput="renderHistory()" type="text" placeholder="Search med or dr..." class="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                    <input id="historyDateFilter" onchange="renderHistory()" type="date" class="px-2 py-2 border border-slate-300 rounded-xl text-xs text-slate-700 focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                </div>
+            </div>
+
+            <div id="historyMobileList" class="space-y-2"></div>
+        </section>
+
+    </main>
+
+    <!-- MOBILE BOTTOM NAVIGATION TAB BAR (iPhone Safe Area Aware) -->
+    <nav class="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 z-40 safe-area-bottom shadow-lg">
+        <div class="max-w-xl mx-auto px-4 h-16 flex items-center justify-around relative">
+            
+            <!-- Tab: Today -->
+            <button id="navBtnChecklist" onclick="switchTab('checklist')" class="flex flex-col items-center justify-center w-16 h-full text-brand-600 font-bold transition">
+                <i class="fa-solid fa-calendar-check text-lg"></i>
+                <span class="text-[10px] mt-1">Today</span>
+            </button>
+
+            <!-- Tab: Meds -->
+            <button id="navBtnMeds" onclick="switchTab('medications')" class="flex flex-col items-center justify-center w-16 h-full text-slate-400 hover:text-slate-700 transition relative">
+                <i class="fa-solid fa-pills text-lg"></i>
+                <span class="text-[10px] mt-1">My Meds</span>
+                <span id="medAlertDot" class="hidden w-2 h-2 rounded-full bg-amber-500 absolute top-2 right-4"></span>
+            </button>
+
+            <!-- Center Action Button: Add Med -->
+            <div class="relative -top-5">
+                <button onclick="openAddModal()" class="w-13 h-13 rounded-full bg-brand-600 text-white flex items-center justify-center shadow-lg shadow-brand-600/30 active:scale-95 transition border-4 border-slate-100">
+                    <i class="fa-solid fa-plus text-xl"></i>
+                </button>
+            </div>
+
+            <!-- Tab: History -->
+            <button id="navBtnHistory" onclick="switchTab('history')" class="flex flex-col items-center justify-center w-16 h-full text-slate-400 hover:text-slate-700 transition">
+                <i class="fa-solid fa-clock-rotate-left text-lg"></i>
+                <span class="text-[10px] mt-1">History</span>
+            </button>
+
+            <!-- Quick Sync Button -->
+            <button onclick="triggerManualSync()" class="flex flex-col items-center justify-center w-16 h-full text-slate-400 hover:text-slate-700 transition">
+                <i class="fa-solid fa-cloud text-lg"></i>
+                <span class="text-[10px] mt-1">Sync</span>
+            </button>
+
+        </div>
+    </nav>
+
+    <!-- MODAL: ADD / EDIT MEDICATIONS (Bottom Sheet on Mobile) -->
+    <div id="medModal" class="hidden fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/50 backdrop-blur-xs transition-opacity">
+        <div class="bg-white rounded-t-3xl sm:rounded-2xl shadow-xl border border-slate-200 w-full max-w-lg max-h-[90vh] overflow-y-auto safe-area-bottom">
+            <div class="sticky top-0 bg-white px-5 py-4 border-b border-slate-100 flex justify-between items-center z-10">
+                <h3 id="modalTitle" class="font-bold text-slate-900 text-base">Add New Medication</h3>
+                <button onclick="closeModal()" class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center hover:bg-slate-200">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            
+            <form id="medForm" onsubmit="handleMedFormSubmit(event)" class="p-5 space-y-4">
+                <input type="hidden" id="formMedId">
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Medication Name *</label>
+                    <input id="formName" type="text" required placeholder="e.g. Lisinopril 10mg" class="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Prescribing Dr</label>
+                        <input id="formDoctor" type="text" placeholder="Dr. Smith" class="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Time Period *</label>
+                        <select id="formPeriod" required class="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none bg-white">
+                            <option value="Morning">Morning ☀️</option>
+                            <option value="Midday">Midday 🌤️</option>
+                            <option value="Evening">Evening 🌆</option>
+                            <option value="Night">Night 🌙</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Stock Count *</label>
+                        <input id="formStockQty" type="number" min="0" required placeholder="e.g. 30" class="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Units Per Take</label>
+                        <input id="formDoseQty" type="number" min="1" value="1" required class="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Current Repeat</label>
+                        <input id="formCurrentRepeat" type="number" min="1" value="1" class="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Total Repeats</label>
+                        <input id="formTotalRepeats" type="number" min="1" value="5" class="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Refill Due Date</label>
+                    <input id="formRefillDate" type="date" class="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none text-slate-700">
+                </div>
+
+                <div class="pt-3 flex gap-3">
+                    <button type="button" onclick="closeModal()" class="flex-1 py-3 border border-slate-300 rounded-xl text-sm font-semibold text-slate-700 bg-slate-50">Cancel</button>
+                    <button type="submit" class="flex-1 py-3 bg-brand-600 text-white rounded-xl text-sm font-bold shadow-md">Save Medication</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- VANILLA JAVASCRIPT APPLICATION CORE -->
+    <script>
+        // State Store
+        const state = {
+            medications: [],
+            dailyTicks: {}, // { "YYYY-MM-DD": [medId1, medId2] }
+            historyLog: [],
+            activeTab: 'checklist',
+            selectedPeriodFilter: 'All',
+            currentUser: null,
+            netlifyToken: null
+        };
+
+        function getTodayISO() {
+            const today = new Date();
+            return today.toISOString().split('T')[0];
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initNetlifyIdentity();
+            loadState();
+            checkAndResetDailyTicks();
+            renderAll();
+            
+            const options = { weekday: 'short', month: 'short', day: 'numeric' };
+            document.getElementById('currentDateDisplay').textContent = new Date().toLocaleDateString(undefined, options);
+        });
+
+        // --- NETLIFY IDENTITY INTEGRATION ---
+        function initNetlifyIdentity() {
+            if (window.netlifyIdentity) {
+                window.netlifyIdentity.on('init', user => handleUserAuthChange(user));
+                window.netlifyIdentity.on('login', user => {
+                    handleUserAuthChange(user);
+                    window.netlifyIdentity.close();
+                    syncWithNetlifyCloud('pull');
+                });
+                window.netlifyIdentity.on('logout', () => handleUserAuthChange(null));
+            }
+        }
+
+        function handleUserAuthChange(user) {
+            state.currentUser = user;
+            const badge = document.getElementById('syncBadge');
+            if (user) {
+                user.jwt().then(token => { state.netlifyToken = token; });
+                badge.textContent = 'Netlify';
+                badge.className = 'text-[10px] font-bold px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full border border-emerald-200';
+            } else {
+                state.netlifyToken = null;
+                badge.textContent = 'Local';
+                badge.className = 'text-[10px] font-bold px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full border border-slate-200';
+            }
+        }
+
+        async function syncWithNetlifyCloud(action = 'push') {
+            if (!state.currentUser) return;
+            const endpoint = '/.netlify/functions/medication-store';
+            try {
+                const token = await state.currentUser.jwt();
+                if (action === 'push') {
+                    await fetch(endpoint, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ meds: state.medications, history: state.historyLog })
+                    });
+                } else if (action === 'pull') {
+                    const res = await fetch(endpoint, { headers: { 'Authorization': `Bearer ${token}` } });
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.meds) {
+                            state.medications = data.meds;
+                            state.historyLog = data.history || [];
+                            saveStateToLocal();
+                            renderAll();
+                        }
+                    }
+                }
+            } catch (err) {
+                console.log('Netlify sync fallback:', err);
+            }
+        }
+
+        function triggerManualSync() {
+            if (state.currentUser) {
+                syncWithNetlifyCloud('push').then(() => alert('Synced with Netlify Cloud!'));
+            } else if (window.netlifyIdentity) {
+                window.netlifyIdentity.open();
+            }
+        }
+
+        // --- LOCAL STORAGE PERSISTENCE ---
+        function saveState() {
+            saveStateToLocal();
+            if (state.currentUser) syncWithNetlifyCloud('push');
+        }
+
+        function saveStateToLocal() {
+            localStorage.setItem('pillpulse_medications', JSON.stringify(state.medications));
+            localStorage.setItem('pillpulse_dailyTicks', JSON.stringify(state.dailyTicks));
+            localStorage.setItem('pillpulse_historyLog', JSON.stringify(state.historyLog));
+        }
+
+        function loadState() {
+            const meds = localStorage.getItem('pillpulse_medications');
+            const ticks = localStorage.getItem('pillpulse_dailyTicks');
+            const history = localStorage.getItem('pillpulse_historyLog');
+
+            if (meds) state.medications = JSON.parse(meds);
+            else {
+                state.medications = [
+                    { id: '1', name: 'Lisinopril 10mg', doctor: 'Sarah Jenkins', period: 'Morning', stockQty: 24, doseQty: 1, currentRepeat: 2, totalRepeats: 5, refillDate: '2026-11-20' },
+                    { id: '2', name: 'Metformin 500mg', doctor: 'Robert Vance', period: 'Midday', stockQty: 3, doseQty: 1, currentRepeat: 4, totalRepeats: 5, refillDate: '2026-11-06' },
+                    { id: '3', name: 'Magnesium Glycinate', doctor: 'Sarah Jenkins', period: 'Night', stockQty: 45, doseQty: 2, currentRepeat: 1, totalRepeats: 3, refillDate: '2026-12-15' }
+                ];
+            }
+            if (ticks) state.dailyTicks = JSON.parse(ticks);
+            if (history) state.historyLog = JSON.parse(history);
+        }
+
+        function checkAndResetDailyTicks() {
+            const todayKey = getTodayISO();
+            if (!state.dailyTicks[todayKey]) state.dailyTicks[todayKey] = [];
+        }
+
+        // --- MOBILE TAB NAVIGATION ---
+        function switchTab(tabName) {
+            state.activeTab = tabName;
+            
+            document.getElementById('tabChecklist').classList.add('hidden-tab');
+            document.getElementById('tabMedications').classList.add('hidden-tab');
+            document.getElementById('tabHistory').classList.add('hidden-tab');
+
+            const navChecklist = document.getElementById('navBtnChecklist');
+            const navMeds = document.getElementById('navBtnMeds');
+            const navHistory = document.getElementById('navBtnHistory');
+
+            [navChecklist, navMeds, navHistory].forEach(btn => {
+                btn.className = 'flex flex-col items-center justify-center w-16 h-full text-slate-400 hover:text-slate-700 transition relative';
+            });
+
+            if (tabName === 'checklist') {
+                document.getElementById('tabChecklist').classList.remove('hidden-tab');
+                navChecklist.className = 'flex flex-col items-center justify-center w-16 h-full text-brand-600 font-bold transition';
+            } else if (tabName === 'medications') {
+                document.getElementById('tabMedications').classList.remove('hidden-tab');
+                navMeds.className = 'flex flex-col items-center justify-center w-16 h-full text-brand-600 font-bold transition relative';
+            } else if (tabName === 'history') {
+                document.getElementById('tabHistory').classList.remove('hidden-tab');
+                navHistory.className = 'flex flex-col items-center justify-center w-16 h-full text-brand-600 font-bold transition';
+            }
+            renderAll();
+        }
+
+        function filterPeriod(period) {
+            state.selectedPeriodFilter = period;
+            ['All', 'Morning', 'Midday', 'Evening', 'Night'].forEach(p => {
+                const btn = document.getElementById(`chip${p}`);
+                if (btn) {
+                    if (p === period) {
+                        btn.className = 'px-3.5 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap bg-slate-900 text-white shadow-xs';
+                    } else {
+                        btn.className = 'px-3.5 py-1.5 rounded-xl text-xs font-medium transition whitespace-nowrap bg-white text-slate-600 border border-slate-200';
+                    }
+                }
+            });
+            renderChecklist();
+        }
+
+        // --- ACTIONS ---
+        function toggleMedicationTaken(medId) {
+            const todayKey = getTodayISO();
+            if (!state.dailyTicks[todayKey]) state.dailyTicks[todayKey] = [];
+            
+            const list = state.dailyTicks[todayKey];
+            const idx = list.indexOf(medId);
+            const med = state.medications.find(m => m.id === medId);
+
+            if (!med) return;
+
+            if (idx === -1) {
+                list.push(medId);
+                med.stockQty = Math.max(0, med.stockQty - (med.doseQty || 1));
+
+                const now = new Date();
+                state.historyLog.unshift({
+                    id: Date.now().toString(),
+                    medId: med.id,
+                    medName: med.name,
+                    doctor: med.doctor,
+                    period: med.period,
+                    dateIso: todayKey,
+                    timestamp: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                });
+            } else {
+                list.splice(idx, 1);
+                med.stockQty += (med.doseQty || 1);
+                const hIdx = state.historyLog.findIndex(h => h.medId === medId && h.dateIso === todayKey);
+                if (hIdx !== -1) state.historyLog.splice(hIdx, 1);
+            }
+
+            saveState();
+            renderAll();
+        }
+
+        function quickRefill(medId) {
+            const med = state.medications.find(m => m.id === medId);
+            if (med) {
+                med.stockQty += 30;
+                if (med.currentRepeat < med.totalRepeats) med.currentRepeat += 1;
+                saveState();
+                renderAll();
+            }
+        }
+
+        function deleteMedication(medId) {
+            if (confirm('Delete this medication?')) {
+                state.medications = state.medications.filter(m => m.id !== medId);
+                saveState();
+                renderAll();
+            }
+        }
+
+        // --- MODAL CONTROL ---
+        function openAddModal() {
+            document.getElementById('modalTitle').textContent = 'Add New Medication';
+            document.getElementById('formMedId').value = '';
+            document.getElementById('medForm').reset();
+            document.getElementById('medModal').classList.remove('hidden');
+        }
+
+        function openEditModal(medId) {
+            const med = state.medications.find(m => m.id === medId);
+            if (!med) return;
+
+            document.getElementById('modalTitle').textContent = 'Edit Medication';
+            document.getElementById('formMedId').value = med.id;
+            document.getElementById('formName').value = med.name;
+            document.getElementById('formDoctor').value = med.doctor || '';
+            document.getElementById('formPeriod').value = med.period;
+            document.getElementById('formStockQty').value = med.stockQty;
+            document.getElementById('formDoseQty').value = med.doseQty || 1;
+            document.getElementById('formCurrentRepeat').value = med.currentRepeat || 1;
+            document.getElementById('formTotalRepeats').value = med.totalRepeats || 5;
+            document.getElementById('formRefillDate').value = med.refillDate || '';
+
+            document.getElementById('medModal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('medModal').classList.add('hidden');
+        }
+
+        function handleMedFormSubmit(event) {
+            event.preventDefault();
+            const id = document.getElementById('formMedId').value;
+            const medData = {
+                id: id || Date.now().toString(),
+                name: document.getElementById('formName').value,
+                doctor: document.getElementById('formDoctor').value,
+                period: document.getElementById('formPeriod').value,
+                stockQty: parseInt(document.getElementById('formStockQty').value) || 0,
+                doseQty: parseInt(document.getElementById('formDoseQty').value) || 1,
+                currentRepeat: parseInt(document.getElementById('formCurrentRepeat').value) || 1,
+                totalRepeats: parseInt(document.getElementById('formTotalRepeats').value) || 1,
+                refillDate: document.getElementById('formRefillDate').value
+            };
+
+            if (id) {
+                const idx = state.medications.findIndex(m => m.id === id);
+                if (idx !== -1) state.medications[idx] = medData;
+            } else {
+                state.medications.push(medData);
+            }
+
+            saveState();
+            closeModal();
+            renderAll();
+        }
+
+        function clearHistoryLog() {
+            if (confirm('Clear history logs?')) {
+                state.historyLog = [];
+                saveState();
+                renderHistory();
+            }
+        }
+
+        // --- RENDER ENGINE ---
+        function renderAll() {
+            renderAlerts();
+            renderChecklist();
+            renderMedCards();
+            renderHistory();
+        }
+
+        function renderAlerts() {
+            const container = document.getElementById('alertContainer');
+            const alertDot = document.getElementById('medAlertDot');
+            container.innerHTML = '';
+            let alertCount = 0;
+
+            state.medications.forEach(med => {
+                let alertMsg = null;
+                if (med.stockQty <= 5) {
+                    alertMsg = `Low Stock (${med.stockQty} left): ${med.name}`;
+                } else if (med.refillDate) {
+                    const diffDays = Math.ceil((new Date(med.refillDate) - new Date()) / (1000 * 60 * 60 * 24));
+                    if (diffDays <= 7) alertMsg = `Refill Due (${med.refillDate}): ${med.name}`;
+                }
+
+                if (alertMsg) {
+                    alertCount++;
+                    const alertDiv = document.createElement('div');
+                    alertDiv.className = 'p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold flex justify-between items-center';
+                    alertDiv.innerHTML = `
+                        <span class="flex items-center gap-1.5"><i class="fa-solid fa-triangle-exclamation text-amber-500"></i> ${alertMsg}</span>
+                        <button onclick="switchTab('medications')" class="underline text-brand-600 ml-2">Fix</button>
+                    `;
+                    container.appendChild(alertDiv);
+                }
+            });
+
+            if (alertCount > 0) alertDot.classList.remove('hidden');
+            else alertDot.classList.add('hidden');
+        }
+
+        function renderChecklist() {
+            const container = document.getElementById('checklistContainer');
+            const todayKey = getTodayISO();
+            const takenList = state.dailyTicks[todayKey] || [];
+
+            let totalScheduled = state.medications.length;
+            let totalTaken = 0;
+            state.medications.forEach(m => { if (takenList.includes(m.id)) totalTaken++; });
+
+            if (totalScheduled === 0) {
+                document.getElementById('emptyState').classList.remove('hidden');
+                container.innerHTML = '';
+                document.getElementById('progressPercent').textContent = '0%';
+                document.getElementById('progressSubtitle').textContent = '0 doses scheduled';
+                return;
+            } else {
+                document.getElementById('emptyState').classList.add('hidden');
+            }
+
+            const percent = Math.round((totalTaken / totalScheduled) * 100);
+            document.getElementById('progressPercent').textContent = `${percent}% Completed`;
+            document.getElementById('progressSubtitle').textContent = `${totalTaken} of ${totalScheduled} doses taken today`;
+
+            const filteredMeds = state.medications.filter(m => {
+                return state.selectedPeriodFilter === 'All' || m.period === state.selectedPeriodFilter;
+            });
+
+            container.innerHTML = '';
+            filteredMeds.forEach(med => {
+                const isTaken = takenList.includes(med.id);
+                const card = document.createElement('div');
+                card.onclick = (e) => {
+                    // Prevent triggering double check if clicking checkbox directly
+                    if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'BUTTON') {
+                        toggleMedicationTaken(med.id);
+                    }
+                };
+                card.className = `p-4 rounded-2xl border transition-all active:scale-[0.99] cursor-pointer flex items-center justify-between gap-3 ${
+                    isTaken ? 'bg-emerald-50/80 border-emerald-200' : 'bg-white border-slate-200 shadow-xs'
+                }`;
+
+                const periodIcons = { Morning: '☀️', Midday: '🌤️', Evening: '🌆', Night: '🌙' };
+
+                card.innerHTML = `
+                    <div class="flex items-center gap-3.5">
+                        <input type="checkbox" ${isTaken ? 'checked' : ''} onchange="toggleMedicationTaken('${med.id}')"
+                               class="w-6 h-6 rounded-lg text-brand-600 border-slate-300 focus:ring-brand-500 accent-brand-600 cursor-pointer">
+                        <div>
+                            <h4 class="font-bold text-slate-900 text-sm ${isTaken ? 'line-through text-slate-400' : ''}">${med.name}</h4>
+                            <div class="text-xs text-slate-500 mt-0.5 flex items-center gap-2">
+                                <span>${periodIcons[med.period] || ''} ${med.period}</span>
+                                <span>• ${med.doseQty || 1} dose</span>
+                                ${med.doctor ? `<span>• Dr. ${med.doctor}</span>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-right flex flex-col items-end gap-1">
+                        <span class="text-[11px] font-bold px-2 py-0.5 rounded-full ${med.stockQty <= 5 ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'}">
+                            ${med.stockQty} left
+                        </span>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function renderMedCards() {
+            const grid = document.getElementById('medicationCardsGrid');
+            document.getElementById('medCountBadge').textContent = `${state.medications.length} meds`;
+            grid.innerHTML = '';
+
+            state.medications.forEach(med => {
+                const card = document.createElement('div');
+                card.className = 'bg-white rounded-2xl p-4 border border-slate-200 shadow-xs flex flex-col justify-between space-y-3';
+                card.innerHTML = `
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h3 class="font-bold text-slate-900 text-base">${med.name}</h3>
+                            <p class="text-xs text-slate-500"><i class="fa-solid fa-user-doctor text-slate-400 mr-1"></i>Dr. ${med.doctor || 'Unspecified'}</p>
+                        </div>
+                        <div class="flex gap-1">
+                            <button onclick="openEditModal('${med.id}')" class="p-2 text-slate-400 hover:text-brand-600 text-sm"><i class="fa-solid fa-pen-to-square"></i></button>
+                            <button onclick="deleteMedication('${med.id}')" class="p-2 text-slate-400 hover:text-red-600 text-sm"><i class="fa-solid fa-trash-can"></i></button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-2 bg-slate-50 p-2.5 rounded-xl text-center text-xs">
+                        <div>
+                            <span class="block text-slate-400 text-[10px] uppercase font-bold">Slot</span>
+                            <span class="font-semibold text-slate-700">${med.period}</span>
+                        </div>
+                        <div>
+                            <span class="block text-slate-400 text-[10px] uppercase font-bold">Stock</span>
+                            <span class="font-bold ${med.stockQty <= 5 ? 'text-red-600' : 'text-slate-800'}">${med.stockQty}</span>
+                        </div>
+                        <div>
+                            <span class="block text-slate-400 text-[10px] uppercase font-bold">Repeat</span>
+                            <span class="font-semibold text-slate-700">${med.currentRepeat || 1}/${med.totalRepeats || 1}</span>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-between items-center text-xs pt-1">
+                        <span class="text-slate-500">Refill: ${med.refillDate || 'Not set'}</span>
+                        <button onclick="quickRefill('${med.id}')" class="bg-brand-50 text-brand-700 font-bold px-3 py-1.5 rounded-lg border border-brand-200 active:scale-95 transition">
+                            + Restock (30)
+                        </button>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function renderHistory() {
+            const container = document.getElementById('historyMobileList');
+            const search = document.getElementById('historySearch').value.toLowerCase();
+            const dateFilter = document.getElementById('historyDateFilter').value;
+            container.innerHTML = '';
+
+            const filtered = state.historyLog.filter(item => {
+                const matchesSearch = !search || item.medName.toLowerCase().includes(search) || (item.doctor && item.doctor.toLowerCase().includes(search));
+                const matchesDate = !dateFilter || item.dateIso === dateFilter;
+                return matchesSearch && matchesDate;
+            });
+
+            if (filtered.length === 0) {
+                container.innerHTML = `<div class="p-6 text-center text-xs text-slate-400">No logs matching filters.</div>`;
+                return;
+            }
+
+            filtered.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'bg-white p-3 rounded-xl border border-slate-200 text-xs flex justify-between items-center';
+                div.innerHTML = `
+                    <div>
+                        <span class="font-bold text-slate-900">${item.medName}</span>
+                        <div class="text-slate-400 text-[11px]">${item.timestamp} • ${item.period}</div>
+                    </div>
+                    <span class="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-semibold border border-emerald-200 text-[10px]">
+                        Taken
+                    </span>
+                `;
+                container.appendChild(div);
+            });
+        }
+    </script>
+</body>
+</html>

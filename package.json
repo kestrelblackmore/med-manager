@@ -1,0 +1,12 @@
+{
+  "name": "netlify-medication-manager",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "netlify dev",
+    "deploy": "netlify deploy --prod"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^8.0.0"
+  }
+}
